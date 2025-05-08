@@ -136,12 +136,30 @@ $("doCreate").onclick=async ()=>{
   const res=await api('/api/rooms',{username:name,password:pwd,hidden,maxUsers:cap});
   if(res.error){alert(res.error);return;} ({roomId,userId}=res);username=name;startChat();
 };
-$("doJoin").onclick=async ()=>{
-  const id=getRoomId(),name=$("jName").value.trim(),pwd=$("jPwd").value;
-  if(id.length!==11||!name||pwd.length<5){alert("Fill all fields");return;}
-  const res=await api(`/api/rooms/${id}/join`,{username:name,password:pwd});
-  if(res.error){alert(res.error);return;} ({roomId,userId}=res);username=name;startChat();
-};
+$("doJoin").onclick = async () => {
+  const id = getRoomId(), name = $("jName").value.trim(), pwd = $("jPwd").value;
+  if (id.length !== 11 || !name || pwd.length < 5) {
+    alert("Fill all fields"); return;
+  }
+
+  const res = await api(`/api/rooms/${id}/join`, { username: name, password: pwd });
+  if (res.error) {
+    if (res.error.includes("maximum number")) {
+      alert("This room has reached its user limit. Try another room.");
+    } else if (res.error.includes("already taken")) {
+      alert("Username already in use in this room.");
+    } else if (res.error.includes("invalid password")) {
+      alert("Incorrect password.");
+    } else {
+      alert("Error: " + res.error);
+    }
+    return;
+  }
+
+  ({ roomId, userId } = res);
+  username = name;
+  startChat();
+};;
 
 /* ── CHAT ── */
 $("backBtn").onclick=()=>{ws?.close();toggle('chat',false);toggle('landing',true);loadRooms();};
