@@ -1,148 +1,130 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Simple Chat Rooms</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <style>
-    :root { --gap: 0.75rem; --radius: 0.8rem; }
-    body   { font-family: system-ui, sans-serif; max-width: 640px; margin: 0 auto; padding: var(--gap); }
-    h1     { text-align: center; }
-    #landing, #chat { display: none; }
+<meta charset="UTF-8">
+<title>Simple Chat Rooms</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root { --gap:.75rem; --rad:.8rem; }
+body   { font-family:system-ui,sans-serif; max-width:640px; margin:0 auto; padding:var(--gap);}
+h1     { text-align:center; }
 
-    .card { border: 1px solid #ccc; border-radius: var(--radius);
-            padding: var(--gap); margin-bottom: var(--gap);
-            display: flex; justify-content: space-between; align-items: center; }
+.card { border:1px solid #ccc; border-radius:var(--rad); padding:var(--gap);
+        display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--gap);}
+#roomList .card:hover{background:#f6f6f6;cursor:pointer;}
 
-    #roomList .card:hover { background:#f6f6f6; cursor:pointer; }
+.btn { padding:.4rem .9rem; margin:.15rem; border:1px solid #888;
+       border-radius:var(--rad); background:#fafafa; cursor:pointer;}
+.hidden{display:none;}
 
-    #messages { height: 50vh; border:1px solid #ddd; border-radius: var(--radius);
-                padding: var(--gap); overflow-y:auto; margin-bottom: var(--gap); }
-    .btn { padding: .4rem .9rem; margin: .15rem;
-           border-radius: var(--radius); border:1px solid #888; cursor:pointer; background:#fafafa; }
-    .hidden { display:none; }
-    #side { font-size: .9rem; border:1px solid #ddd; border-radius:var(--radius);
-            padding:var(--gap); height:50vh; overflow-y:auto; }
-  </style>
+#messages { height:50vh; border:1px solid #ddd; border-radius:var(--rad); padding:var(--gap);
+            overflow-y:auto; margin-bottom:var(--gap);}
+#side{font-size:.9rem;border:1px solid #ddd;border-radius:var(--rad);
+      padding:var(--gap);height:50vh;overflow-y:auto;}
+
+@keyframes fade { from{opacity:1;} to{opacity:0;} }
+.msg { animation: fade 300s linear forwards; }   /* 5 perc (300 s) */
+</style>
 </head>
 <body>
-  <h1>Simple Chat</h1>
+<h1>Simple Chat</h1>
 
-  <!-- LANDING -->
-  <div id="landing">
-    <button class="btn" id="createBtn">Create Room</button>
-    <hr>
+<!-- LANDING -->
+<div id="landing">
+  <button class="btn" id="createBtn">Create Room</button><hr>
+  <h3>Available Rooms</h3>
+  <div id="roomList"></div>
 
-    <h3>Available Rooms</h3>
-    <div id="roomList"></div>
+  <div id="createForm" class="hidden">
+    <h4>Create new room</h4>
+    <input id="cName" placeholder="Username"><br>
+    <input id="cPwd" type="password" placeholder="Password (min 5 chars)" minlength="5" required><br>
+    <button class="btn" id="doCreate">Create</button>
+    <button class="btn" onclick="toggle('createForm',false)">Cancel</button>
+  </div>
+</div>
 
-    <!-- create form -->
-    <div id="createForm" class="hidden">
-      <h4>Create new room</h4>
-      <input id="cName" placeholder="Username"><br>
-      <input id="cPwd"  placeholder="Password (optional)"><br>
-      <button class="btn" id="doCreate">Create</button>
-      <button class="btn" onclick="toggle('createForm',false)">Cancel</button>
+<!-- CHAT -->
+<div id="chat" class="hidden">
+  <button class="btn" id="backBtn">← Back</button>
+  <h3>Room <span id="roomLbl"></span></h3>
+  <div style="display:flex;gap:var(--gap);">
+    <div style="flex:3;">
+      <div id="messages"></div>
+      <input id="msgInput" placeholder="Message" style="width:70%;">
+      <button class="btn" id="sendBtn">Send</button>
+    </div>
+    <div id="side" style="flex:1;">
+      <strong>Users</strong>
+      <ul id="userList"></ul>
     </div>
   </div>
-
-  <!-- CHAT -->
-  <div id="chat">
-    <button class="btn" id="backBtn">← Back</button>
-    <h3>Room <span id="roomIdLbl"></span></h3>
-
-    <div style="display:flex; gap:var(--gap);">
-      <div style="flex:3;">
-        <div id="messages"></div>
-        <input id="msgInput" placeholder="Message" style="width:70%;">
-        <button class="btn" id="sendBtn">Send</button>
-      </div>
-      <div id="side" style="flex:1;">
-        <strong>Users</strong>
-        <ul id="userList"></ul>
-      </div>
-    </div>
-  </div>
+</div>
 
 <script>
-const $ = id => document.getElementById(id);
-const api = (p,b)=>fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.json());
-const toggle=(id,s=true)=>$(id).classList[s?'remove':'add']('hidden');
+const $=id=>document.getElementById(id);
+const api=(p,b)=>fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.json());
+const toggle=(id,show=true)=>$(id).classList[show?'remove':'add']('hidden');
 
 let ws, roomId, userId, username;
 
-function listRooms(rooms) {
-  const list = rooms.map(r => `
-    <div class="card" onclick="joinDirect('${r.id}')">
-      <span>${r.id}</span>
-      <span>${r.memberCount} user${r.memberCount!==1?'s':''}</span>
-    </div>`).join('');
-  $("roomList").innerHTML = list || "<em>No rooms yet</em>";
+async function loadRooms(){
+  const rooms=await fetch('/api/rooms').then(r=>r.json());
+  $("roomList").innerHTML = rooms.length
+   ? rooms.map(r=>`<div class="card" onclick="joinDirect('${r.id}')">
+                    <span>${r.id}</span><span>${r.memberCount} user${r.memberCount!==1?'s':''}</span>
+                  </div>`).join('')
+   : "<em>No rooms yet</em>";
 }
-
-async function fetchRooms() {
-  const res = await fetch('/api/rooms').then(r=>r.json());
-  listRooms(res);
-}
-window.joinDirect = async id => {
-  const name = prompt("Your username:");
-  if(!name) return;
-  const pwd  = prompt("Password (blank if none):") || "";
-  const res  = await api(`/api/rooms/${id}/join`,{username:name,password:pwd});
-  if(res.error) { alert(res.error); return; }
-  ({roomId,userId} = res); username = name;
-  startChat();
+window.joinDirect=async id=>{
+  const name=prompt("Username:")?.trim(); if(!name) return;
+  const pwd =prompt("Password (min 5 chars):")||""; if(pwd.length<5){alert("min 5 chars");return;}
+  const res=await api(`/api/rooms/${id}/join`,{username:name,password:pwd});
+  if(res.error){alert(res.error);return;}
+  ({roomId,userId}=res); username=name; startChat();
 };
 
-// ----- landing events -----
-$("createBtn").onclick = ()=>toggle('createForm');
-$("doCreate").onclick  = async ()=>{
-  const name = $("cName").value.trim();
-  const pwd  = $("cPwd").value;
-  if(!name) return alert("username?");
-  const res = await api('/api/rooms',{username:name,password:pwd});
+$("createBtn").onclick=()=>toggle('createForm');
+$("doCreate").onclick=async ()=>{
+  const name=$("cName").value.trim(), pwd=$("cPwd").value;
+  if(!name||pwd.length<5) return alert("username & password ≥5");
+  const res=await api('/api/rooms',{username:name,password:pwd});
   if(res.error) return alert(res.error);
-  ({roomId,userId} = res); username=name;
-  startChat();
+  ({roomId,userId}=res); username=name; startChat();
 };
 
-// ----- chat ui -----
-$("backBtn").onclick = ()=>{
-  ws && ws.close();
-  $("chat").style.display="none";
-  $("landing").style.display="block";
-  fetchRooms();
-};
-
-function startChat() {
-  $("landing").style.display="none";
-  $("chat").style.display="block";
-  $("roomIdLbl").textContent = roomId;
-  $("messages").innerHTML = "";
-  $("userList").innerHTML  = "";
+function startChat(){
+  toggle('landing',false); toggle('chat',true);
+  $("roomLbl").textContent=roomId;
+  $("messages").innerHTML=""; $("userList").innerHTML="";
   connectWS();
 }
-function connectWS() {
+$("backBtn").onclick=()=>{ ws?.close(); toggle('chat',false); toggle('landing',true); loadRooms(); };
+
+function connectWS(){
   ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}`);
   ws.onopen=()=>ws.send(JSON.stringify({type:'connect',roomId,userId}));
   ws.onmessage=e=>{
     const d=JSON.parse(e.data);
     if(d.type==='room.message') addMsg(`[${new Date(d.sentAt).toLocaleTimeString()}] ${d.username}: ${d.content}`);
-    if(d.type==='room.users')   listUsers(d.users);
-    if(d.type==='rooms.list')   listRooms(d.rooms);  // realtime landing frissítés
+    if(d.type==='room.users') $("userList").innerHTML=d.users.map(u=>`<li>${u}</li>`).join('');
+    if(d.type==='rooms.list') loadRooms();
   };
 }
-function addMsg(t){ const div=document.createElement('div');div.textContent=t;$("messages").appendChild(div);$("messages").scrollTop=$("messages").scrollHeight;}
-function listUsers(arr){ $("userList").innerHTML = arr.map(u=>`<li>${u}</li>`).join(''); }
 
-$("sendBtn").onclick = ()=>{
+function addMsg(t){
+  const div=document.createElement('div'); div.textContent=t; div.className='msg';
+  div.addEventListener('animationend',()=>div.remove());
+  $("messages").appendChild(div); $("messages").scrollTop=$("messages").scrollHeight;
+}
+
+$("sendBtn").onclick=()=>{
   const t=$("msgInput").value.trim();
-  if(t){ ws.send(JSON.stringify({type:'message',content:t})); $("msgInput").value=''; }
+  if(t){ws.send(JSON.stringify({type:'message',content:t})); $("msgInput").value='';}
 };
 
-// ----- init -----
-$("landing").style.display="block";
-fetchRooms();
+// init
+loadRooms();
 </script>
 </body>
 </html>
