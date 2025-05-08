@@ -1,11 +1,12 @@
 export type Role = "owner" | "member";
 
 export interface Room {
-  id: string;                               // ABC-123-XYZ
-  isPublic: boolean;                        // false = hidden
-  maxUsers: number;                         // 2‒6
-  members: Record<string, string>;          // userId → username
-  hash: string;                             // SHA-256 password
+  id          : string;
+  isPublic    : boolean;
+  maxUsers    : number;
+  hash        : string;                   // jelszó hash
+  members     : Record<string, string>;   // userId → username
+  loginHashes : string[];                 // hash(username), maxUsers számú engedett belépés
 }
 
 
