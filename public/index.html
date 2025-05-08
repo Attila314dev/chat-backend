@@ -2,28 +2,26 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Simple Chat Rooms</title>
+<title>Simple Chat</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
 :root { --gap:.75rem; --rad:.8rem; }
-body   { font-family:system-ui,sans-serif; max-width:640px; margin:0 auto; padding:var(--gap);}
-h1     { text-align:center; }
+body{font-family:system-ui,sans-serif;max-width:640px;margin:0 auto;padding:var(--gap);}
+h1{text-align:center}
 
-.card { border:1px solid #ccc; border-radius:var(--rad); padding:var(--gap);
-        display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--gap);}
-#roomList .card:hover{background:#f6f6f6;cursor:pointer;}
+.card{border:1px solid #ccc;border-radius:var(--rad);padding:var(--gap);
+      display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--gap);}
+#roomList .card:hover{background:#f6f6f6;cursor:pointer}
 
-.btn { padding:.4rem .9rem; margin:.15rem; border:1px solid #888;
-       border-radius:var(--rad); background:#fafafa; cursor:pointer;}
-.hidden{display:none;}
+.btn{padding:.4rem .9rem;margin:.15rem;border:1px solid #888;border-radius:var(--rad);background:#fafafa;cursor:pointer}
+.hidden{display:none}
 
-#messages { height:50vh; border:1px solid #ddd; border-radius:var(--rad); padding:var(--gap);
-            overflow-y:auto; margin-bottom:var(--gap);}
-#side{font-size:.9rem;border:1px solid #ddd;border-radius:var(--rad);
-      padding:var(--gap);height:50vh;overflow-y:auto;}
+#messages{height:50vh;border:1px solid #ddd;border-radius:var(--rad);padding:var(--gap);
+          overflow-y:auto;margin-bottom:var(--gap);}
+#side{font-size:.9rem;border:1px solid #ddd;border-radius:var(--rad);padding:var(--gap);height:50vh;overflow-y:auto}
 
-@keyframes fade { from{opacity:1;} to{opacity:0;} }
-.msg { animation: fade 300s linear forwards; }   /* 5 perc (300 s) */
+@keyframes fade {from{opacity:1;} to{opacity:0;}}
+.msg{animation:fade 300s linear forwards;} /* 5 perc */
 </style>
 </head>
 <body>
@@ -31,16 +29,31 @@ h1     { text-align:center; }
 
 <!-- LANDING -->
 <div id="landing">
-  <button class="btn" id="createBtn">Create Room</button><hr>
+  <button class="btn" id="createBtn">Create Room</button>
+  <button class="btn" id="joinBtn">Join Room</button>
+  <hr>
   <h3>Available Rooms</h3>
   <div id="roomList"></div>
 
+  <!-- Create form -->
   <div id="createForm" class="hidden">
     <h4>Create new room</h4>
     <input id="cName" placeholder="Username"><br>
     <input id="cPwd" type="password" placeholder="Password (min 5 chars)" minlength="5" required><br>
+    <label><input type="checkbox" id="cHidden"> Hidden room</label><br>
+    <label>Max users (2-6): <input type="number" id="cCap" min="2" max="6" value="6" style="width:4rem"></label><br>
     <button class="btn" id="doCreate">Create</button>
     <button class="btn" onclick="toggle('createForm',false)">Cancel</button>
+  </div>
+
+  <!-- Join form -->
+  <div id="joinForm" class="hidden">
+    <h4>Join room</h4>
+    <input id="jRoom" placeholder="Room ID (ABC-123-XYZ)"><br>
+    <input id="jName" placeholder="Username"><br>
+    <input id="jPwd" type="password" placeholder="Password" minlength="5" required><br>
+    <button class="btn" id="doJoin">Join</button>
+    <button class="btn" onclick="toggle('joinForm',false)">Cancel</button>
   </div>
 </div>
 
@@ -64,34 +77,46 @@ h1     { text-align:center; }
 <script>
 const $=id=>document.getElementById(id);
 const api=(p,b)=>fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.json());
-const toggle=(id,show=true)=>$(id).classList[show?'remove':'add']('hidden');
+const toggle=(id,s=true)=>$(id).classList[s?'remove':'add']('hidden');
 
-let ws, roomId, userId, username;
+let ws,roomId,userId,username;
 
-async function loadRooms(){
-  const rooms=await fetch('/api/rooms').then(r=>r.json());
+function listRooms(rooms){
   $("roomList").innerHTML = rooms.length
-   ? rooms.map(r=>`<div class="card" onclick="joinDirect('${r.id}')">
-                    <span>${r.id}</span><span>${r.memberCount} user${r.memberCount!==1?'s':''}</span>
-                  </div>`).join('')
-   : "<em>No rooms yet</em>";
+   ? rooms.map(r=>`<div class="card" onclick="quickJoin('${r.id}')">
+        <span>${r.id}</span>
+        <span>${r.memberCount}/${r.maxUsers}</span>
+      </div>`).join('')
+   : "<em>No public rooms</em>";
 }
-window.joinDirect=async id=>{
-  const name=prompt("Username:")?.trim(); if(!name) return;
-  const pwd =prompt("Password (min 5 chars):")||""; if(pwd.length<5){alert("min 5 chars");return;}
-  const res=await api(`/api/rooms/${id}/join`,{username:name,password:pwd});
-  if(res.error){alert(res.error);return;}
-  ({roomId,userId}=res); username=name; startChat();
+async function loadRooms(){listRooms(await fetch('/api/rooms').then(r=>r.json()));}
+window.quickJoin=async id=>{
+  toggle('joinForm',true);
+  $("jRoom").value=id;
 };
 
 $("createBtn").onclick=()=>toggle('createForm');
-$("doCreate").onclick=async ()=>{
+$("joinBtn").onclick  =()=>toggle('joinForm');
+
+$("doCreate").onclick=async()=>{
   const name=$("cName").value.trim(), pwd=$("cPwd").value;
-  if(!name||pwd.length<5) return alert("username & password ≥5");
-  const res=await api('/api/rooms',{username:name,password:pwd});
+  const hidden=$("cHidden").checked;
+  const cap=parseInt($("cCap").value,10);
+  if(!name||pwd.length<5||isNaN(cap)||cap<2||cap>6) return alert("Fill all fields (pwd ≥5, cap 2-6)");
+  const res=await api('/api/rooms',{username:name,password:pwd,hidden,maxUsers:cap});
   if(res.error) return alert(res.error);
   ({roomId,userId}=res); username=name; startChat();
 };
+
+$("doJoin").onclick=async()=>{
+  const id=$("jRoom").value.trim().toUpperCase(), name=$("jName").value.trim(), pwd=$("jPwd").value;
+  if(!id||!name||pwd.length<5) return alert("Fill all fields");
+  const res=await api(`/api/rooms/${id}/join`,{username:name,password:pwd});
+  if(res.error) return alert(res.error);
+  ({roomId,userId}=res); username=name; startChat();
+};
+
+$("backBtn").onclick=()=>{ws?.close();toggle('chat',false);toggle('landing',true);loadRooms();};
 
 function startChat(){
   toggle('landing',false); toggle('chat',true);
@@ -99,8 +124,6 @@ function startChat(){
   $("messages").innerHTML=""; $("userList").innerHTML="";
   connectWS();
 }
-$("backBtn").onclick=()=>{ ws?.close(); toggle('chat',false); toggle('landing',true); loadRooms(); };
-
 function connectWS(){
   ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}`);
   ws.onopen=()=>ws.send(JSON.stringify({type:'connect',roomId,userId}));
@@ -108,20 +131,21 @@ function connectWS(){
     const d=JSON.parse(e.data);
     if(d.type==='room.message') addMsg(`[${new Date(d.sentAt).toLocaleTimeString()}] ${d.username}: ${d.content}`);
     if(d.type==='room.users') $("userList").innerHTML=d.users.map(u=>`<li>${u}</li>`).join('');
-    if(d.type==='rooms.list') loadRooms();
+    if(d.type==='rooms.list') listRooms(d.rooms);
   };
 }
-
 function addMsg(t){
   const div=document.createElement('div'); div.textContent=t; div.className='msg';
   div.addEventListener('animationend',()=>div.remove());
   $("messages").appendChild(div); $("messages").scrollTop=$("messages").scrollHeight;
 }
 
-$("sendBtn").onclick=()=>{
+$("sendBtn").onclick=sendMsg;
+$("msgInput").addEventListener('keydown',e=>{if(e.key==='Enter'&& !e.shiftKey){e.preventDefault();sendMsg();}});
+function sendMsg(){
   const t=$("msgInput").value.trim();
-  if(t){ws.send(JSON.stringify({type:'message',content:t})); $("msgInput").value='';}
-};
+  if(t){ws?.send(JSON.stringify({type:'message',content:t}));$("msgInput").value='';}
+}
 
 // init
 loadRooms();
