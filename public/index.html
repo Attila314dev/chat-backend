@@ -1,119 +1,148 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Online Chat Rooms</title>
+  <meta charset="UTF-8">
+  <title>Simple Chat Rooms</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <style>
-    body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 1rem; }
-    h1 { text-align: center; }
-    #welcome, #chat { display: none; }
-    .hidden { display: none; }
-    #messages { height: 50vh; overflow-y: auto; border: 1px solid #ccc; padding: .5rem; margin: 1rem 0; }
-    .btn { padding: .5rem 1rem; margin: .25rem; cursor: pointer; }
+    :root { --gap: 0.75rem; --radius: 0.8rem; }
+    body   { font-family: system-ui, sans-serif; max-width: 640px; margin: 0 auto; padding: var(--gap); }
+    h1     { text-align: center; }
+    #landing, #chat { display: none; }
+
+    .card { border: 1px solid #ccc; border-radius: var(--radius);
+            padding: var(--gap); margin-bottom: var(--gap);
+            display: flex; justify-content: space-between; align-items: center; }
+
+    #roomList .card:hover { background:#f6f6f6; cursor:pointer; }
+
+    #messages { height: 50vh; border:1px solid #ddd; border-radius: var(--radius);
+                padding: var(--gap); overflow-y:auto; margin-bottom: var(--gap); }
+    .btn { padding: .4rem .9rem; margin: .15rem;
+           border-radius: var(--radius); border:1px solid #888; cursor:pointer; background:#fafafa; }
+    .hidden { display:none; }
+    #side { font-size: .9rem; border:1px solid #ddd; border-radius:var(--radius);
+            padding:var(--gap); height:50vh; overflow-y:auto; }
   </style>
 </head>
 <body>
   <h1>Simple Chat</h1>
 
-  <!-- Üdvözlőképernyő -->
-  <div id="welcome">
+  <!-- LANDING -->
+  <div id="landing">
     <button class="btn" id="createBtn">Create Room</button>
-    <button class="btn" id="joinBtn">Join Room</button>
+    <hr>
 
+    <h3>Available Rooms</h3>
+    <div id="roomList"></div>
+
+    <!-- create form -->
     <div id="createForm" class="hidden">
-      <h3>Create Room</h3>
-      <input id="cUsername" placeholder="Username" /><br/>
-      <input id="cPassword" placeholder="Password (optional)" /><br/>
+      <h4>Create new room</h4>
+      <input id="cName" placeholder="Username"><br>
+      <input id="cPwd"  placeholder="Password (optional)"><br>
       <button class="btn" id="doCreate">Create</button>
       <button class="btn" onclick="toggle('createForm',false)">Cancel</button>
     </div>
+  </div>
 
-    <div id="joinForm" class="hidden">
-      <h3>Join Room</h3>
-      <input id="jRoomId" placeholder="Room ID (abc-123-xyz)" /><br/>
-      <input id="jUsername" placeholder="Username" /><br/>
-      <input id="jPassword" placeholder="Password" /><br/>
-      <button class="btn" id="doJoin">Join</button>
-      <button class="btn" onclick="toggle('joinForm',false)">Cancel</button>
+  <!-- CHAT -->
+  <div id="chat">
+    <button class="btn" id="backBtn">← Back</button>
+    <h3>Room <span id="roomIdLbl"></span></h3>
+
+    <div style="display:flex; gap:var(--gap);">
+      <div style="flex:3;">
+        <div id="messages"></div>
+        <input id="msgInput" placeholder="Message" style="width:70%;">
+        <button class="btn" id="sendBtn">Send</button>
+      </div>
+      <div id="side" style="flex:1;">
+        <strong>Users</strong>
+        <ul id="userList"></ul>
+      </div>
     </div>
   </div>
 
-  <!-- Chat képernyő -->
-  <div id="chat">
-    <div>Room: <span id="roomLabel"></span> • You are <span id="userLabel"></span></div>
-    <div id="messages"></div>
-    <input id="msgInput" placeholder="Write a message" style="width:75%" />
-    <button class="btn" id="sendBtn">Send</button>
-  </div>
+<script>
+const $ = id => document.getElementById(id);
+const api = (p,b)=>fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.json());
+const toggle=(id,s=true)=>$(id).classList[s?'remove':'add']('hidden');
 
-  <script>
-    const api = (path, body) =>
-      fetch(path, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)})
-        .then(r => r.json());
+let ws, roomId, userId, username;
 
-    const toggle = (id, show = true) =>
-      document.getElementById(id).classList[show ? 'remove' : 'add']('hidden');
+function listRooms(rooms) {
+  const list = rooms.map(r => `
+    <div class="card" onclick="joinDirect('${r.id}')">
+      <span>${r.id}</span>
+      <span>${r.memberCount} user${r.memberCount!==1?'s':''}</span>
+    </div>`).join('');
+  $("roomList").innerHTML = list || "<em>No rooms yet</em>";
+}
 
-    document.getElementById('welcome').style.display = 'block';
-    document.getElementById('createBtn').onclick = () => toggle('createForm');
-    document.getElementById('joinBtn').onclick  = () => toggle('joinForm');
+async function fetchRooms() {
+  const res = await fetch('/api/rooms').then(r=>r.json());
+  listRooms(res);
+}
+window.joinDirect = async id => {
+  const name = prompt("Your username:");
+  if(!name) return;
+  const pwd  = prompt("Password (blank if none):") || "";
+  const res  = await api(`/api/rooms/${id}/join`,{username:name,password:pwd});
+  if(res.error) { alert(res.error); return; }
+  ({roomId,userId} = res); username = name;
+  startChat();
+};
 
-    let ws, roomId, userId;
+// ----- landing events -----
+$("createBtn").onclick = ()=>toggle('createForm');
+$("doCreate").onclick  = async ()=>{
+  const name = $("cName").value.trim();
+  const pwd  = $("cPwd").value;
+  if(!name) return alert("username?");
+  const res = await api('/api/rooms',{username:name,password:pwd});
+  if(res.error) return alert(res.error);
+  ({roomId,userId} = res); username=name;
+  startChat();
+};
 
-    async function connectWS() {
-      ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`);
-      ws.onopen = () => ws.send(JSON.stringify({ type:'connect', roomId, userId }));
-      ws.onmessage = e => {
-        const d = JSON.parse(e.data);
-        if (d.type === 'room.message')
-          addMsg(`[${new Date(d.sentAt).toLocaleTimeString()}] ${d.username}: ${d.content}`);
-      };
-    }
+// ----- chat ui -----
+$("backBtn").onclick = ()=>{
+  ws && ws.close();
+  $("chat").style.display="none";
+  $("landing").style.display="block";
+  fetchRooms();
+};
 
-    function addMsg(text) {
-      const div = document.createElement('div');
-      div.textContent = text;
-      messages.appendChild(div);
-      messages.scrollTop = messages.scrollHeight;
-    }
+function startChat() {
+  $("landing").style.display="none";
+  $("chat").style.display="block";
+  $("roomIdLbl").textContent = roomId;
+  $("messages").innerHTML = "";
+  $("userList").innerHTML  = "";
+  connectWS();
+}
+function connectWS() {
+  ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}`);
+  ws.onopen=()=>ws.send(JSON.stringify({type:'connect',roomId,userId}));
+  ws.onmessage=e=>{
+    const d=JSON.parse(e.data);
+    if(d.type==='room.message') addMsg(`[${new Date(d.sentAt).toLocaleTimeString()}] ${d.username}: ${d.content}`);
+    if(d.type==='room.users')   listUsers(d.users);
+    if(d.type==='rooms.list')   listRooms(d.rooms);  // realtime landing frissítés
+  };
+}
+function addMsg(t){ const div=document.createElement('div');div.textContent=t;$("messages").appendChild(div);$("messages").scrollTop=$("messages").scrollHeight;}
+function listUsers(arr){ $("userList").innerHTML = arr.map(u=>`<li>${u}</li>`).join(''); }
 
-    doCreate.onclick = async () => {
-      const username = cUsername.value.trim();
-      const password = cPassword.value;
-      if (!username) return alert('username?');
-      const res = await api('/api/rooms', { username, password });
-      if (res.error) return alert(res.error);
-      ({ roomId, userId } = res);
-      startChat(username);
-    };
+$("sendBtn").onclick = ()=>{
+  const t=$("msgInput").value.trim();
+  if(t){ ws.send(JSON.stringify({type:'message',content:t})); $("msgInput").value=''; }
+};
 
-    doJoin.onclick = async () => {
-      const username = jUsername.value.trim();
-      roomId = jRoomId.value.trim();
-      const password = jPassword.value;
-      if (!username || !roomId) return alert('fill all');
-      const res = await api(`/api/rooms/${roomId}/join`, { username, password });
-      if (res.error) return alert(res.error);
-      userId = res.userId;
-      startChat(username);
-    };
-
-    function startChat(username) {
-      welcome.style.display = 'none';
-      chat.style.display = 'block';
-      roomLabel.textContent = roomId;
-      userLabel.textContent = username;
-      connectWS();
-    }
-
-    sendBtn.onclick = () => {
-      const text = msgInput.value.trim();
-      if (text) {
-        ws.send(JSON.stringify({ type:'message', content:text }));
-        msgInput.value = '';
-      }
-    };
-  </script>
+// ----- init -----
+$("landing").style.display="block";
+fetchRooms();
+</script>
 </body>
 </html>
