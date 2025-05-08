@@ -5,81 +5,84 @@
 <title>Simple Chat</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-:root { --gap:.75rem; --rad:.8rem; --sq:60px; }
+:root { --gap:.75rem; --rad:.8rem; --sq:30px; }                   /* 50 %-kal kisebb */
 
 body{font-family:system-ui,sans-serif;max-width:640px;margin:0 auto;padding:var(--gap);}
 h1{text-align:center}
 
 .card{border:1px solid #ccc;border-radius:var(--rad);padding:var(--gap);
       display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--gap);}
+.card small{font-size:.8rem;color:#666;}
 #roomList .card:hover{background:#f6f6f6;cursor:pointer}
 
 .btn{padding:.4rem .9rem;margin:.15rem;border:1px solid #888;border-radius:var(--rad);background:#fafafa;cursor:pointer}
 .hidden{display:none}
 
-/* ---- 9 kocka ---- */
-.code-box{display:flex;gap:8px;align-items:center;justify-content:center;margin:.5rem 0;}
+/* ---- 9 kocka (fele akkora) ---- */
+.code-box{display:flex;gap:6px;align-items:center;justify-content:center;margin:.5rem 0;}
 .code-input{
   width:var(--sq);height:var(--sq);
-  font: 32px/var(--sq) monospace; text-align:center;
-  border:2px solid #999;border-radius:6px;
+  font: 20px/var(--sq) monospace;text-align:center;
+  border:2px solid #999;border-radius:5px;
   text-transform:uppercase;background:#fff;outline:none;
 }
 .code-input:focus{border-color:#000;}
-.dash{font-size:32px;font-weight:bold;margin:0 4px;user-select:none;}
+.dash{font-size:20px;font-weight:bold;margin:0 3px;user-select:none;}
+
+/* Create form középre */
+#createForm{background:#fff;padding:1rem;border:1px solid #ccc;border-radius:var(--rad);
+            width:280px;margin:1rem auto;box-shadow:0 4px 10px rgba(0,0,0,.15);}
 
 #messages{height:50vh;border:1px solid #ddd;border-radius:var(--rad);padding:var(--gap);
-          overflow-y:auto;margin-bottom:var(--gap);}
+          overflow-y:auto;margin-bottom:var(--gap);user-select:none;}     /* no copy */
 #side{font-size:.9rem;border:1px solid #ddd;border-radius:var(--rad);
       padding:var(--gap);height:50vh;overflow-y:auto}
 
-@keyframes fade{from{opacity:1;}to{opacity:0;}}
+@keyframes fade{from{opacity:1;}to{opacity:0.2;}}                /* enyhébb fade (copy-hoz) */
 .msg{animation:fade 300s linear forwards;}
+
 </style>
 </head>
 <body>
 <h1>Simple Chat</h1>
 
-<!-- LANDING -->
 <div id="landing">
   <button class="btn" id="createBtn">Create Room</button>
   <button class="btn" id="joinBtn">Join Room</button>
   <hr>
-  <h3>Available Rooms</h3>
-  <div id="roomList"></div>
+  <div id="roomSection">
+    <h3>Available Rooms</h3>
+    <div id="roomList"></div>
+  </div>
 
-  <!-- Create -->
+  <!-- CREATE -->
   <div id="createForm" class="hidden">
     <h4>Create new room</h4>
     <input id="cName" placeholder="Username"><br>
-    <input id="cPwd" type="password" placeholder="Password (min 5 chars)" minlength="5" required><br>
+    <input id="cPwd" type="password" placeholder="Password (min 5)" minlength="5" required><br>
     <label><input type="checkbox" id="cHidden"> Hidden room</label><br>
-    <label>Max users (2-6): <input type="number" id="cCap" min="2" max="6" value="6" style="width:4rem"></label><br>
+    <label>Max users (2-6):
+      <input type="number" id="cCap" min="2" max="6" value="6" style="width:4rem">
+    </label><br>
     <button class="btn" id="doCreate">Create</button>
-    <button class="btn" onclick="toggle('createForm',false)">Cancel</button>
+    <button class="btn" onclick="closeForms()">Cancel</button>
   </div>
 
-  <!-- Join -->
+  <!-- JOIN -->
   <div id="joinForm" class="hidden">
     <h4>Join room</h4>
     <div class="code-box" id="codeBox">
       <!-- 9 input + 2 dash -->
-      <input class="code-input" maxlength="1">
-      <input class="code-input" maxlength="1">
-      <input class="code-input" maxlength="1">
+      <input class="code-input" maxlength="1"><input class="code-input" maxlength="1"><input class="code-input" maxlength="1">
       <span class="dash">-</span>
-      <input class="code-input" maxlength="1">
-      <input class="code-input" maxlength="1">
-      <input class="code-input" maxlength="1">
+      <input class="code-input" maxlength="1"><input class="code-input" maxlength="1"><input class="code-input" maxlength="1">
       <span class="dash">-</span>
-      <input class="code-input" maxlength="1">
-      <input class="code-input" maxlength="1">
-      <input class="code-input" maxlength="1">
+      <input class="code-input" maxlength="1"><input class="code-input" maxlength="1"><input class="code-input" maxlength="1">
     </div>
     <input id="jName" placeholder="Username"><br>
     <input id="jPwd" type="password" placeholder="Password" minlength="5" required><br>
     <button class="btn" id="doJoin">Join</button>
-    <button class="btn" onclick="toggle('joinForm',false)">Cancel</button>
+    <button class="btn" onclick="closeForms()">Cancel</button>
   </div>
 </div>
 
@@ -107,43 +110,51 @@ const toggle=(id,s=true)=>$(id).classList[s?'remove':'add']('hidden');
 
 let ws,roomId,userId,username;
 
-/* ------ 9-kockás beviteli logika ------ */
+/* —— űrlap-mutatás logika —— */
+function closeForms(){
+  toggle('createForm',false);toggle('joinForm',false);
+  toggle('roomSection',true);
+}
+$("createBtn").onclick = ()=>{ closeForms(); toggle('createForm'); toggle('roomSection',false); };
+$("joinBtn").onclick   = ()=>{ closeForms(); toggle('joinForm');  };
+
+/* —— 9 kockás input —— */
 const boxes=[...document.querySelectorAll('.code-input')];
-boxes.forEach((el,i)=>{
-  el.addEventListener('input',e=>{
-    el.value = el.value.toUpperCase().replace(/[^A-Z0-9]/g,'');
-    if(el.value && i<boxes.length-1) boxes[i+1].focus();
+boxes.forEach((b,i)=>{
+  b.addEventListener('input',()=>{
+    b.value=b.value.toUpperCase().replace(/[^A-Z0-9]/g,'');
+    if(b.value && i<boxes.length-1) boxes[i+1].focus();
   });
-  el.addEventListener('keydown',e=>{
-    if(e.key==='Backspace'&&!el.value&&i>0) boxes[i-1].focus();
+  b.addEventListener('keydown',e=>{
+    if(e.key==='Backspace'&&!b.value&&i>0) boxes[i-1].focus();
   });
 });
 function getRoomId(){
-  const val=boxes.map(b=>b.value).join('');
-  return val.length===9 ? `${val.slice(0,3)}-${val.slice(3,6)}-${val.slice(6)}` : '';
+  const raw=boxes.map(b=>b.value).join('');
+  return raw.length===9 ? `${raw.slice(0,3)}-${raw.slice(3,6)}-${raw.slice(6)}` : '';
 }
-function setRoomId(code){           // kitölti a quick-join id-t
-  const raw=code.replace(/-/g,'');
+function setRoomId(id){
+  const raw=id.replace(/-/g,'');
   boxes.forEach((b,i)=>b.value=raw[i]||'');
   boxes[Math.min(raw.length,8)].focus();
 }
 
-/* ------ szobalista ------ */
-function listRooms(rooms){
-  $("roomList").innerHTML = rooms.length
-   ? rooms.map(r=>`<div class="card" onclick="quickJoin('${r.id}')">
-        <span>${r.id}</span><span>${r.memberCount}/${r.maxUsers}</span>
-      </div>`).join('')
-   : "<em>No public rooms</em>";
+/* —— szobalista + visszaszámláló —— */
+function renderRooms(arr){
+  const html = arr.length ? arr.map(r=>{
+    const ttlSec = r.ttl!==null ? Math.ceil(r.ttl/1000) : '∞';
+    return `<div class="card" onclick="quickJoin('${r.id}')">
+        <span>${r.id}</span>
+        <span>${r.memberCount}/${r.maxUsers} &nbsp; <small>${ttlSec}s</small></span>
+      </div>`;
+  }).join('') : "<em>No public rooms</em>";
+  $("roomList").innerHTML=html;
 }
-async function loadRooms(){listRooms(await fetch('/api/rooms').then(r=>r.json()));}
-window.quickJoin=id=>{toggle('joinForm',true);setRoomId(id);}
+async function loadRooms(){ renderRooms(await fetch('/api/rooms').then(r=>r.json())); }
+window.quickJoin=id=>{ $("joinBtn").click(); setRoomId(id); }   // opens join form
 
-/* ------ űrlapok ------ */
-$("createBtn").onclick=()=>toggle('createForm');
-$("joinBtn").onclick  =()=>toggle('joinForm');
-
-$("doCreate").onclick=async()=>{
+/* —— CREATE —— */
+$("doCreate").onclick=async ()=>{
   const name=$("cName").value.trim(), pwd=$("cPwd").value;
   const hidden=$("cHidden").checked, cap=parseInt($("cCap").value,10);
   if(!name||pwd.length<5||isNaN(cap)||cap<2||cap>6){alert("Fill all fields");return;}
@@ -152,7 +163,8 @@ $("doCreate").onclick=async()=>{
   ({roomId,userId}=res); username=name; startChat();
 };
 
-$("doJoin").onclick=async()=>{
+/* —— JOIN —— */
+$("doJoin").onclick=async ()=>{
   const id=getRoomId(), name=$("jName").value.trim(), pwd=$("jPwd").value;
   if(!id||!name||pwd.length<5){alert("Fill all fields");return;}
   const res=await api(`/api/rooms/${id}/join`,{username:name,password:pwd});
@@ -160,7 +172,7 @@ $("doJoin").onclick=async()=>{
   ({roomId,userId}=res); username=name; startChat();
 };
 
-/* ------ chat ------ */
+/* —— CHAT —— */
 $("backBtn").onclick=()=>{ws?.close();toggle('chat',false);toggle('landing',true);loadRooms();};
 
 function startChat(){
@@ -174,30 +186,40 @@ function connectWS(){
   ws.onopen =()=>ws.send(JSON.stringify({type:'connect',roomId,userId}));
   ws.onmessage=e=>{
     const d=JSON.parse(e.data);
-    if(d.type==='room.message')   addMsg(d);
-    if(d.type==='room.history')   d.messages.forEach(addMsg);
+    if(d.type==='room.message')   addMsg(d,true);
+    if(d.type==='room.history')   d.messages.forEach(m=>addMsg(m,false));
     if(d.type==='room.users')     $("userList").innerHTML=d.users.map(u=>`<li>${u}</li>`).join('');
-    if(d.type==='rooms.list')     listRooms(d.rooms);
+    if(d.type==='rooms.list')     renderRooms(d.rooms);
   };
 }
-function addMsg(m){
+function addMsg(m,live){
   const div=document.createElement('div');
   div.textContent=`[${new Date(m.sentAt).toLocaleTimeString()}] ${m.username}: ${m.content}`;
-  const remain=300-(Date.now()-m.sentAt)/1000;
-  if(remain>0) div.style.animation=`fade ${remain}s linear forwards`;
+  div.className='msg';
+  /* maradék idő a fade-hez */
+  if(!live){
+    const remain = 300 - (Date.now()-m.sentAt)/1000;
+    if(remain>0) div.style.animation=`fade ${remain}s linear forwards`;
+  }
+  /* kijelölés → törlés */
+  div.addEventListener('mouseup',()=>{ if(getSelection().toString()) div.remove(); });
   $("messages").appendChild(div);$("messages").scrollTop=$("messages").scrollHeight;
 }
 
-/* Enter-küldés */
-$("sendBtn").onclick=sendMsg;
-$("msgInput").addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg();}});
-function sendMsg(){
+/* Enter = send */
+$("sendBtn").onclick=send;
+$("msgInput").addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}});
+function send(){
   const t=$("msgInput").value.trim();
   if(t){ws?.send(JSON.stringify({type:'message',content:t}));$("msgInput").value='';}
 }
 
+/* tiltjuk a másolást a chat-panelben */
+$("messages").addEventListener('copy',e=>e.preventDefault());
+
 /* init */
 loadRooms();
+setInterval(loadRooms,5_000);         /* countdown frissítés */
 </script>
 </body>
 </html>
