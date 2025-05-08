@@ -40,7 +40,7 @@ app.post("/api/rooms", (req, res) => {
   rooms[roomId] = {
     id: roomId,
     isPublic,
-    password,
+    password: password.trim(),        // <── trim!
     members: { [userId]: username }
   };
 
@@ -55,7 +55,8 @@ app.post("/api/rooms/:roomId/join", (req, res) => {
   const { username, password = "" } = req.body;
   if (!username) return res.status(400).json({ error: "username required" });
 
-  if (room.password && room.password !== password) {
+  const pass = (password || "").trim();          // <── trim!
+  if (room.password && room.password !== pass) {
     return res.status(403).json({ error: "invalid password" });
   }
 
