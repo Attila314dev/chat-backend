@@ -145,10 +145,13 @@ function handleClose(ws:any){
   }
 }
 
-function broadcast(roomId:string,p:any){
-  const txt=JSON.stringify(p);
-  wss.clients.forEach((c:any)=>{ const cd:cdata|undefined=c._data;
-    if(c.readyState===1&&cd?.roomId===roomId) c.send(txt);
+function broadcast(roomId: string, payload: any) {
+  const txt = JSON.stringify(payload);
+  wss.clients.forEach((c: any) => {
+    const cd: ClientData | undefined = c._data;   // ← itt volt a typo
+    if (c.readyState === 1 && cd?.roomId === roomId) {
+      c.send(txt);
+    }
   });
 }
 function broadcastUsers(roomId:string){
