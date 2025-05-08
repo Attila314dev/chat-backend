@@ -9,53 +9,64 @@ import { v4 as uuid } from "uuid";
 import type { Room, Message } from "./types";
 
 const PORT = process.env.PORT || 3000;
-
-const app = express();
+const app  = express();
 app.use(express.json());
 
-// Statikus SPA kiszolgálása
+// ------ statikus fájlok ------
 const staticPath = path.join(__dirname, "../public");
 app.use(express.static(staticPath));
 
-// ===== In-memory tárolók (MVP) =====
+// ------ in-memory tárolók ------
 const rooms: Record<string, Room> = {};
 const messages: Message[] = [];
 
-// ----- Segédfüggvények -----
-function generateRoomId(): string {
-  const seg = () => Math.random().toString(36).substring(2, 5); // 3 karakter
-  return `${seg()}-${seg()}-${seg()}`;
-}
+// ------ segédek ------
+const seg = () => Math.random().toString(36).substring(2, 5);
+const genRoomId = () => `${seg()}-${seg()}-${seg()}`;
 
-// ===== REST végpontok =====
+// ------ REST ------
+app.get("/api/rooms", (_req, res) => {
+  // szobák listája a landinghez
+  const list = Object.values(rooms).map(r => ({
+    id: r.id,
+    memberCount: Object.keys(r.members).length,
+    isPublic: r.isPublic
+  }));
+  res.json(list);
+});
 
-// Szoba létrehozás
+app.get("/api/rooms/:roomId", (req, res) => {
+  const room = rooms[req.params.roomId];
+  if (!room) return res.status(404).json({ error: "room not found" });
+  res.json({ members: Object.values(room.members) });
+});
+
 app.post("/api/rooms", (req, res) => {
   const { username, password = "", isPublic = false } = req.body;
   if (!username) return res.status(400).json({ error: "username required" });
 
-  const roomId = generateRoomId();
+  const roomId = genRoomId();
   const userId = uuid();
 
   rooms[roomId] = {
     id: roomId,
     isPublic,
-    password: password.trim(),        // <── trim!
+    password: password.trim(),
     members: { [userId]: username }
   };
 
   res.status(201).json({ roomId, userId });
+  broadcastRooms();                    // új szoba → friss listát küldünk
 });
 
-// Szobához csatlakozás
 app.post("/api/rooms/:roomId/join", (req, res) => {
-  const room = rooms[req.params.roomId];
+  const room   = rooms[req.params.roomId];
   if (!room) return res.status(404).json({ error: "room not found" });
 
   const { username, password = "" } = req.body;
   if (!username) return res.status(400).json({ error: "username required" });
 
-  const pass = (password || "").trim();          // <── trim!
+  const pass = password.trim();
   if (room.password && room.password !== pass) {
     return res.status(403).json({ error: "invalid password" });
   }
@@ -68,50 +79,55 @@ app.post("/api/rooms/:roomId/join", (req, res) => {
   room.members[userId] = username;
 
   res.json({ roomId: room.id, userId });
+  broadcastUsers(room.id);             // új tag → user-lista frissítés
 });
 
-// ===== HTTP + WebSocket =====
+// ------ HTTP + WebSocket ------
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+const wss    = new WebSocketServer({ server });
 
 interface ClientData {
   userId: string;
   roomId: string;
 }
 
-wss.on("connection", (ws) => {
-  // első üzenetnek jönnie kell: {type:"connect", roomId, userId}
-  ws.once("message", (raw) => {
+wss.on("connection", ws => {
+  // első üzenet: {type:"connect", roomId, userId}
+  ws.once("message", raw => {
     try {
       const init = JSON.parse(raw.toString());
       if (init.type !== "connect") throw new Error();
       const { roomId, userId } = init;
       const room = rooms[roomId];
       if (!room || !room.members[userId]) {
-        ws.close();
-        return;
+        ws.close(); return;
       }
       (ws as any)._data = { roomId, userId } as ClientData;
-      ws.on("message", handleWsMessage);
+
+      ws.on("message", handleMessage);
+      ws.on("close",  () => handleClose(ws as any));
+
       ws.send(JSON.stringify({ type: "system", msg: "connected" }));
-    } catch {
-      ws.close();
-    }
+      // küldjük az aktuális user-listát
+      ws.send(JSON.stringify({ type: "room.users", users: Object.values(room.members) }));
+    } catch { ws.close(); }
   });
 });
 
-function handleWsMessage(this: any, raw: Buffer) {
-  const ws: any = this;
-  const data: ClientData = ws._data;
+function handleMessage(this: any, raw: Buffer) {
+  const ws   : any        = this;
+  const data : ClientData = ws._data;
   if (!data) return;
-  const room = rooms[data.roomId];
 
+  const room  = rooms[data.roomId];
   try {
     const msg = JSON.parse(raw.toString());
+
     if (msg.type === "message") {
-      const text = (msg.content || "").toString().trim();
+      const text = (msg.content ?? "").toString().trim();
       if (!text) return;
-      const message: Message = {
+
+      const m: Message = {
         id: uuid(),
         roomId: room.id,
         authorId: data.userId,
@@ -119,22 +135,51 @@ function handleWsMessage(this: any, raw: Buffer) {
         content: text,
         sentAt: new Date().toISOString()
       };
-      messages.push(message);
-      broadcast(room.id, { type: "room.message", ...message });
+      messages.push(m);
+      broadcast(room.id, { type: "room.message", ...m });
     }
-  } catch { /* rossz formátum: ignoráljuk */ }
+  } catch { /* malformed → ignoráljuk */ }
+}
+
+function handleClose(ws: any) {
+  const cd: ClientData | undefined = ws._data;
+  if (!cd) return;
+  const room = rooms[cd.roomId];
+  if (!room) return;
+
+  delete room.members[cd.userId];
+  broadcastUsers(room.id);
+
+  // ha üres maradt a szoba, töröljük
+  if (Object.keys(room.members).length === 0) {
+    delete rooms[room.id];
+    broadcastRooms();
+  }
 }
 
 function broadcast(roomId: string, payload: any) {
-  const msg = JSON.stringify(payload);
-  wss.clients.forEach((client: any) => {
-    const cd: ClientData | undefined = client._data;
-    if (client.readyState === 1 && cd?.roomId === roomId) {
-      client.send(msg);
-    }
+  const txt = JSON.stringify(payload);
+  wss.clients.forEach((c: any) => {
+    const cd: ClientData | undefined = c._data;
+    if (c.readyState === 1 && cd?.roomId === roomId) c.send(txt);
   });
 }
 
-server.listen(PORT, () => {
-  console.log(`🚀 Server listening on :${PORT}`);
-});
+function broadcastUsers(roomId: string) {
+  const users = Object.values(rooms[roomId]?.members ?? {});
+  broadcast(roomId, { type: "room.users", users });
+}
+
+function broadcastRooms() {
+  const list = Object.values(rooms).map(r => ({
+    id: r.id,
+    memberCount: Object.keys(r.members).length,
+    isPublic: r.isPublic
+  }));
+  const txt = JSON.stringify({ type: "rooms.list", rooms: list });
+  wss.clients.forEach((c: any) => {
+    if (c.readyState === 1) c.send(txt);
+  });
+}
+
+server.listen(PORT, () => console.log(`🚀 listening on :${PORT}`));
