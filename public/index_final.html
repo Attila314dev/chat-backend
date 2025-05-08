@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Simple Chat</title>
+
+<style>
+:root { --gap:.75rem; --rad:.8rem; }
+
+body{font-family:system-ui,sans-serif;max-width:640px;margin:0 auto;padding:var(--gap);}
+h1{text-align:center;margin:0 0 .5rem}
+
+.text-input{width:260px;height:42px;padding:6px 10px;font:18px monospace;border:2px solid #888;border-radius:var(--rad);}
+.text-input:focus{border-color:#000;outline:none}
+
+.btn{padding:.4rem .9rem;margin:.15rem;border:1px solid #888;border-radius:var(--rad);background:#fafafa;cursor:pointer}
+.hidden{display:none}
+
+.card{border:1px solid #ccc;border-radius:var(--rad);padding:var(--gap);
+      display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--gap);}
+.card small{font-size:.8rem;color:#666;}
+#roomList .card:hover{background:#f6f6f6;cursor:pointer}
+
+#createForm{background:#fff;padding:1rem;border:1px solid #ccc;border-radius:var(--rad);
+            width:280px;margin:1rem auto;box-shadow:0 4px 10px rgba(0,0,0,.15);}
+
+#messages{height:50vh;border:1px solid #ddd;border-radius:var(--rad);padding:.25rem var(--gap);
+          overflow-y:auto;margin-bottom:var(--gap);user-select:none;font:16px/1.35 monospace;}
+
+.msg      {display:flex;width:100%;margin-bottom:.7rem;}
+.timer    {width:4ch;flex-shrink:0;color:#888;margin-right:.4ch;user-select:none;}
+.text     {width:30ch;white-space:pre-wrap;overflow-wrap:break-word;opacity:1;transition:opacity 300s linear;}
+
+@keyframes fadeToGone { to { opacity: 0; } }
+</style>
+</head>
+<body>
+<h1>Simple Chat</h1>
+
+<div id="landing">
+  <button class="btn" id="createBtn">Create Room</button>
+  <button class="btn" id="joinBtn">Join Room</button>
+  <hr>
+  <div id="roomSection">
+    <h3>Available Rooms</h3>
+    <div id="roomList"></div>
+  </div>
+
+  <div id="createForm" class="hidden">
+    <h4>Create new room</h4>
+    <input id="cName" class="text-input" placeholder="Username"><br>
+    <input id="cPwd"  class="text-input" type="password" placeholder="Password (min 5)" minlength="5" required><br>
+    <label><input type="checkbox" id="cHidden"> Hidden room</label><br>
+    <label>Max users (2-6):
+      <input type="number" id="cCap" min="2" max="6" value="6" style="width:4rem">
+    </label><br>
+    <button class="btn" id="doCreate">Create</button>
+    <button class="btn" onclick="closeForms()">Cancel</button>
+  </div>
+
+  <div id="joinForm" class="hidden">
+    <h4>Join room</h4>
+    <input id="jRoom" class="text-input" placeholder="ABC-123-XYZ" maxlength="11" autocomplete="off"><br>
+    <input id="jName" class="text-input" placeholder="Username"><br>
+    <input id="jPwd"  class="text-input" type="password" placeholder="Password" minlength="5" required><br>
+    <button class="btn" id="doJoin">Join</button>
+    <button class="btn" onclick="closeForms()">Cancel</button>
+  </div>
+</div>
+
+<div id="chat" class="hidden">
+  <button class="btn" id="backBtn">← Back</button>
+  <h3>Room <span id="roomLbl"></span></h3>
+  <div style="display:flex;gap:var(--gap);">
+    <div style="flex:3;">
+      <div id="messages"></div>
+      <input id="msgInput" class="text-input" placeholder="Message" style="width:70%;">
+      <button class="btn" id="sendBtn">Send</button>
+    </div>
+    <div id="side" style="flex:1;">
+      <strong>Users</strong>
+      <ul id="userList"></ul>
+    </div>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const api=(p,b)=>fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.json());
+const toggle=(id,s=true)=>$(id).classList[s?'remove':'add']('hidden');
+
+let ws,roomId,userId,username;
+
+function closeForms(){toggle('createForm',false);toggle('joinForm',false);toggle('roomSection',true);}
+$("createBtn").onclick=()=>{closeForms();toggle('createForm');toggle('roomSection',false);}
+$("joinBtn").onclick  =()=>{closeForms();toggle('joinForm');}
+
+(function roomInputFormatter(){
+  const el=$("jRoom");
+  el.addEventListener('input',()=>{
+    const raw=el.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,9);
+    el.value = raw.replace(/(...)(...?)(.?)/, (_,a,b,c)=> c?`${a}-${b}-${c}`: b?`${a}-${b}`:a);
+  });
+})();
+const getRoomId=()=>$("jRoom").value.trim().toUpperCase();
+const setRoomId=id=>{ $("jRoom").value=id; $("jRoom").dispatchEvent(new Event('input')); $("jRoom").focus(); };
+
+function renderRooms(arr){
+  const html=arr.length?arr.map(r=>{
+    const ttl=r.ttl!=null?Math.ceil(r.ttl/1000):'∞';
+    return `<div class="card" onclick="quickJoin('${r.id}')">
+        <span>${r.id}</span>
+        <span>${r.memberCount}/${r.maxUsers} <small>${ttl}s</small></span>
+      </div>`;
+  }).join(''):"<em>No public rooms</em>";
+  $("roomList").innerHTML=html;
+}
+async function loadRooms(){renderRooms(await fetch('/api/rooms').then(r=>r.json()));}
+window.quickJoin=id=>{$("joinBtn").click();setRoomId(id);}
+
+$("doCreate").onclick=async ()=>{
+  const name=$("cName").value.trim(),pwd=$("cPwd").value,hidden=$("cHidden").checked,cap=parseInt($("cCap").value,10);
+  if(!name||pwd.length<5||isNaN(cap)||cap<2||cap>6){alert("Fill all fields");return;}
+  const res=await api('/api/rooms',{username:name,password:pwd,hidden,maxUsers:cap});
+  if(res.error){alert(res.error);return;} ({roomId,userId}=res);username=name;startChat();
+};
+
+$("doJoin").onclick = async () => {
+  const id = getRoomId(), name = $("jName").value.trim(), pwd = $("jPwd").value;
+  if (id.length !== 11 || !name || pwd.length < 5) {
+    alert("Fill all fields"); return;
+  }
+
+  const res = await api(`/api/rooms/${id}/join`, { username: name, password: pwd });
+  if (res.error) {
+    if (res.error.includes("maximum number")) {
+      alert("This room has reached its user limit. Try another room.");
+    } else if (res.error.includes("already taken")) {
+      alert("Username already in use in this room.");
+    } else if (res.error.includes("invalid password")) {
+      alert("Incorrect password.");
+    } else {
+      alert("Error: " + res.error);
+    }
+    return;
+  }
+
+  ({ roomId, userId } = res);
+  username = name;
+  startChat();
+};
+
+$("backBtn").onclick=()=>{ws?.close();toggle('chat',false);toggle('landing',true);loadRooms();};
+function startChat(){toggle('landing',false);toggle('chat',true);$("roomLbl").textContent=roomId;
+  $("messages").innerHTML="";$("userList").innerHTML="";connectWS();}
+
+function connectWS(){
+  ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}`);
+  ws.onopen =()=>ws.send(JSON.stringify({type:'connect',roomId,userId}));
+  ws.onmessage=e=>{
+    const d=JSON.parse(e.data);
+    if(d.type==='room.message') addMsg(d,true);
+    if(d.type==='room.history') d.messages.forEach(m=>addMsg(m,false));
+    if(d.type==='room.users')   $("userList").innerHTML=d.users.map(u=>`<li>${u}</li>`).join('');
+    if(d.type==='rooms.list')   renderRooms(d.rooms);
+  };
+}
+
+function addMsg(m,live){
+  const wrap = document.createElement('div'); wrap.className='msg';
+  const tmr  = document.createElement('span'); tmr.className='timer';
+  const txt  = document.createElement('span'); txt.className='text';
+
+  txt.textContent=`[${new Date(m.sentAt).toLocaleTimeString()}] ${m.username}: ${m.content}`;
+  const remain=Math.max(0,300-Math.floor((Date.now()-m.sentAt)/1000));
+  tmr.textContent=remain.toString().padStart(3,'0');
+
+  if(live) txt.style.animation='fadeToGone 300s linear forwards';
+  else {
+    const dur = remain;
+    if(dur>0) txt.style.animation=`fadeToGone ${dur}s linear forwards`;
+    txt.style.opacity=(remain/300).toFixed(2);
+  }
+
+  const iv=setInterval(()=>{
+    let n=+tmr.textContent-1;
+    if(n<=0){n=0;clearInterval(iv);}
+    tmr.textContent=n.toString().padStart(3,'0');
+  },1000);
+
+  txt.addEventListener('mouseup',()=>{if(getSelection().toString()) wrap.remove();});
+  wrap.append(tmr, txt);
+  $("messages").appendChild(wrap);
+  $("messages").scrollTop = $("messages").scrollHeight;
+
+  setTimeout(() => wrap.remove(), 300_000);
+}
+
+$("messages").addEventListener('copy',e=>e.preventDefault());
+
+$("sendBtn").onclick=send;
+$("msgInput").addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();} });
+function send(){ const t=$("msgInput").value.trim();
+  if(t){ws?.send(JSON.stringify({type:'message',content:t}));$("msgInput").value='';}}
+
+loadRooms();
+setInterval(loadRooms,5_000);
+</script>
+</body>
+</html>
