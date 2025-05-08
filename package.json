@@ -16,6 +16,7 @@
     "uuid": "^9.0.1"
   },
   "devDependencies": {
+    "@types/uuid": "^9.0.4",
     "@types/express": "^4.17.21",
     "@types/node": "^20.11.20",
     "@types/ws": "^8.5.8",
