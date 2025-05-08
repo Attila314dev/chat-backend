@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Online Chat Rooms</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 1rem; }
+    h1 { text-align: center; }
+    #welcome, #chat { display: none; }
+    .hidden { display: none; }
+    #messages { height: 50vh; overflow-y: auto; border: 1px solid #ccc; padding: .5rem; margin: 1rem 0; }
+    .btn { padding: .5rem 1rem; margin: .25rem; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>Simple Chat</h1>
+
+  <!-- Üdvözlőképernyő -->
+  <div id="welcome">
+    <button class="btn" id="createBtn">Create Room</button>
+    <button class="btn" id="joinBtn">Join Room</button>
+
+    <div id="createForm" class="hidden">
+      <h3>Create Room</h3>
+      <input id="cUsername" placeholder="Username" /><br/>
+      <input id="cPassword" placeholder="Password (optional)" /><br/>
+      <button class="btn" id="doCreate">Create</button>
+      <button class="btn" onclick="toggle('createForm',false)">Cancel</button>
+    </div>
+
+    <div id="joinForm" class="hidden">
+      <h3>Join Room</h3>
+      <input id="jRoomId" placeholder="Room ID (abc-123-xyz)" /><br/>
+      <input id="jUsername" placeholder="Username" /><br/>
+      <input id="jPassword" placeholder="Password" /><br/>
+      <button class="btn" id="doJoin">Join</button>
+      <button class="btn" onclick="toggle('joinForm',false)">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Chat képernyő -->
+  <div id="chat">
+    <div>Room: <span id="roomLabel"></span> • You are <span id="userLabel"></span></div>
+    <div id="messages"></div>
+    <input id="msgInput" placeholder="Write a message" style="width:75%" />
+    <button class="btn" id="sendBtn">Send</button>
+  </div>
+
+  <script>
+    const api = (path, body) =>
+      fetch(path, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)})
+        .then(r => r.json());
+
+    const toggle = (id, show = true) =>
+      document.getElementById(id).classList[show ? 'remove' : 'add']('hidden');
+
+    document.getElementById('welcome').style.display = 'block';
+    document.getElementById('createBtn').onclick = () => toggle('createForm');
+    document.getElementById('joinBtn').onclick  = () => toggle('joinForm');
+
+    let ws, roomId, userId;
+
+    async function connectWS() {
+      ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`);
+      ws.onopen = () => ws.send(JSON.stringify({ type:'connect', roomId, userId }));
+      ws.onmessage = e => {
+        const d = JSON.parse(e.data);
+        if (d.type === 'room.message')
+          addMsg(`[${new Date(d.sentAt).toLocaleTimeString()}] ${d.username}: ${d.content}`);
+      };
+    }
+
+    function addMsg(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    doCreate.onclick = async () => {
+      const username = cUsername.value.trim();
+      const password = cPassword.value;
+      if (!username) return alert('username?');
+      const res = await api('/api/rooms', { username, password });
+      if (res.error) return alert(res.error);
+      ({ roomId, userId } = res);
+      startChat(username);
+    };
+
+    doJoin.onclick = async () => {
+      const username = jUsername.value.trim();
+      roomId = jRoomId.value.trim();
+      const password = jPassword.value;
+      if (!username || !roomId) return alert('fill all');
+      const res = await api(`/api/rooms/${roomId}/join`, { username, password });
+      if (res.error) return alert(res.error);
+      userId = res.userId;
+      startChat(username);
+    };
+
+    function startChat(username) {
+      welcome.style.display = 'none';
+      chat.style.display = 'block';
+      roomLabel.textContent = roomId;
+      userLabel.textContent = username;
+      connectWS();
+    }
+
+    sendBtn.onclick = () => {
+      const text = msgInput.value.trim();
+      if (text) {
+        ws.send(JSON.stringify({ type:'message', content:text }));
+        msgInput.value = '';
+      }
+    };
+  </script>
+</body>
+</html>
