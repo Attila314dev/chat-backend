@@ -6,45 +6,53 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
 :root { --gap:.75rem; --rad:.8rem; }
+
+/* layout bits – unchanged */
 body{font-family:system-ui,sans-serif;max-width:640px;margin:0 auto;padding:var(--gap);}
 h1{text-align:center}
-
-/* kártyák, gombok */
 .card{border:1px solid #ccc;border-radius:var(--rad);padding:var(--gap);
       display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--gap);}
 #roomList .card:hover{background:#f6f6f6;cursor:pointer}
 .btn{padding:.4rem .9rem;margin:.15rem;border:1px solid #888;border-radius:var(--rad);background:#fafafa;cursor:pointer}
 .hidden{display:none}
 
-/* lekerekített „négyzetes” Room-ID mező */
+/* ─────  NEW: neat “9 boxes” Room-ID field  ───── */
 .id-input{
   font-family:monospace;
-  font-size:1.4rem;
+  font-size:1.45rem;
   text-transform:uppercase;
   border:none; outline:none;
-  caret-color:#000;
-  width:12.5ch;               /* 11 látható karakter + pici belső margó */
-  padding:.45rem .4ch;
-  letter-spacing:.55ch;       /* tér a kockák között */
-  /* vízszintes felső + alsó vonal */
+  width:21.6ch;                 /* fits 11 visible chars + gaps */
+  padding:.55rem .2ch;
+  letter-spacing:.9ch;          /* roomy gap inside each square */
+
+  /* draw top & bottom border */
   background:
-    linear-gradient(#888 0 0) top    /100% 2px no-repeat,
-    linear-gradient(#888 0 0) bottom /100% 2px no-repeat,
-  /* ismétlődő függőleges választóvonalak (kockák) */
+    linear-gradient(#666 0 0) top    /100% 2px no-repeat,
+    linear-gradient(#666 0 0) bottom /100% 2px no-repeat,
+
+  /* draw vertical borders every (1ch + gap) */
     repeating-linear-gradient(90deg,
-      transparent 0 calc(1ch + .55ch - 2px),
-      #888        calc(1ch + .55ch - 2px) calc(1ch + .55ch),
-      transparent calc(1ch + .55ch) calc(1ch + 2*.55ch));
+      transparent 0,                        /* inside cell */
+      transparent calc(1ch + .9ch - 2px),
+      #666        calc(1ch + .9ch - 2px) calc(1ch + .9ch) );
+
   border-radius:var(--rad);
 }
-.id-input::-webkit-input-placeholder{color:#aaa}      /* Safari fix */
-.id-input::selection{background:#c8dcff}              /* szebb kijelölés */
 
-#messages{height:50vh;border:1px solid #ddd;border-radius:var(--rad);padding:var(--gap);overflow-y:auto;margin-bottom:var(--gap);}
-#side{font-size:.9rem;border:1px solid #ddd;border-radius:var(--rad);padding:var(--gap);height:50vh;overflow-y:auto}
-@keyframes fade {from{opacity:1;} to{opacity:0;}}
-.msg{animation:fade 300s linear forwards;} /* 5 perc */
+/* tidy selection + placeholder */
+.id-input::selection{background:#c8dcff;color:#000;}
+.id-input::-webkit-input-placeholder{color:#aaa;opacity:.5}
+
+/* chat panes – as before */
+#messages{height:50vh;border:1px solid #ddd;border-radius:var(--rad);padding:var(--gap);
+          overflow-y:auto;margin-bottom:var(--gap);}
+#side{font-size:.9rem;border:1px solid #ddd;border-radius:var(--rad);
+      padding:var(--gap);height:50vh;overflow-y:auto}
+@keyframes fade{from{opacity:1;}to{opacity:0;}}
+.msg{animation:fade 300s linear forwards;}          /* 5 min */
 </style>
+
 <script>
 /* ───────────────── Room-ID élő formázás ───────────────── */
 (function(){
