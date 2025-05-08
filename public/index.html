@@ -189,6 +189,7 @@ function addMsg(m,live){
   txt.addEventListener('mouseup',()=>{if(getSelection().toString()) wrap.remove();});
 
   wrap.append(tmr,txt); $("messages").appendChild(wrap); $("messages").scrollTop=$("messages").scrollHeight;
+      setTimeout(() => wrap.remove(), 300_000);  // 5 perc után eltávolítjuk
 }
 
 /* másolás tiltása */
