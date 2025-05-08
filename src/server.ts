@@ -38,17 +38,37 @@ const sha256    = (s:string) => crypto.createHash("sha256").update(s).digest("he
 
 /* ────── REST végpontok ────── */
 
-/* Publikus szobák listája */
+/* … a többi kód változatlan … */
+
+/* GET /api/rooms  ──▶  most `ttl` is jön */
 app.get("/api/rooms", (_req, res) => {
+  const now = Date.now();
   const list = Object.values(rooms)
     .filter(r => r.isPublic)
     .map(r => ({
-      id: r.id,
-      memberCount: Object.keys(r.members).length,
-      maxUsers: r.maxUsers
+      id          : r.id,
+      memberCount : Object.keys(r.members).length,
+      maxUsers    : r.maxUsers,
+      ttl         : r.expiresAt ? Math.max(0, r.expiresAt - now) : null   // <── új
     }));
   res.json(list);
 });
+
+/* broadcastRooms()  ──▶  ugyanígy küldjük a ttl-t */
+function broadcastRooms(){
+  const now = Date.now();
+  const list = Object.values(rooms)
+    .filter(r => r.isPublic)
+    .map(r => ({
+      id:r.id,
+      memberCount:Object.keys(r.members).length,
+      maxUsers:r.maxUsers,
+      ttl: r.expiresAt ? Math.max(0, r.expiresAt - now) : null            // <── új
+    }));
+  const txt = JSON.stringify({ type:"rooms.list", rooms:list });
+  wss.clients.forEach(c => c.readyState === 1 && c.send(txt));
+}
+
 
 /* Szoba létrehozás */
 app.post("/api/rooms", (req, res) => {
