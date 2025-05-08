@@ -34,7 +34,7 @@ h1{text-align:center;margin:0 0 .5rem}
 .timer    {width:4ch;flex-shrink:0;color:#888;margin-right:.4ch;user-select:none;}
 .text     {width:30ch;white-space:pre-wrap;overflow-wrap:break-word;opacity:1;transition:opacity 300s linear;}
 
-@keyframes fadeTo20 {to{opacity:0.2;}}
+@keyframes fadeOut {to{opacity:0;}}
 </style>
 </head>
 <body>
@@ -171,10 +171,10 @@ function addMsg(m,live){
   tmr.textContent=remain.toString().padStart(3,'0');
 
   /* fade csak a szövegre */
-  if(live) txt.style.animation='fadeTo20 300s linear forwards';
+  if(live) txt.style.animation='fadeOut 300s linear forwards';
   else {
     const dur = remain;          // maradék s
-    if(dur>0) txt.style.animation=`fadeTo20 ${dur}s linear forwards`;
+    if(dur>0) txt.style.animation=`fadeOut ${dur}s linear forwards`;
     txt.style.opacity=(remain/300).toFixed(2);
   }
 
