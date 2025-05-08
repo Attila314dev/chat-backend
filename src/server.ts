@@ -9,47 +9,40 @@ import { WebSocketServer } from "ws";
 import { v4 as uuid } from "uuid";
 import type { Room } from "./types";
 
-/* ─── konstansok ─── */
 const PORT       = process.env.PORT || 3000;
-const ROOM_TTL   = 10 * 60 * 1000;          // üres szoba 10 percig él
-const MSG_TTL_MS =  5 * 60 * 1000;          // üzenet 5 percig marad
+const ROOM_TTL   = 10 * 60 * 1000;
+const MSG_TTL_MS = 5 * 60 * 1000;
 
-/* ─── express ─── */
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "../public")));
 
-/* ─── memória-tárolók ─── */
 const rooms: Record<string, Room & { expiresAt?: number }> = {};
-
 interface StoredMsg {
-  roomId  : string;
+  roomId: string;
   username: string;
-  content : string;
-  sentAt  : number;
+  content: string;
+  sentAt: number;
 }
 const messages: StoredMsg[] = [];
 
-/* ─── helper ─── */
 const seg       = () => Math.random().toString(36).substring(2, 5).toUpperCase();
 const genRoomId = () => `${seg()}-${seg()}-${seg()}`;
 const sha256    = (s:string) => crypto.createHash("sha256").update(s).digest("hex");
 
-/* ─── REST ─── */
-
-/* listázzuk a publikus szobákat – TTL-­lel együtt */
+/* GET available rooms */
 app.get("/api/rooms", (_req, res) => {
   const now = Date.now();
   const list = Object.values(rooms).filter(r => r.isPublic).map(r => ({
-    id          : r.id,
-    memberCount : Object.keys(r.members).length,
-    maxUsers    : r.maxUsers,
-    ttl         : r.expiresAt ? Math.max(0, r.expiresAt - now) : null
+    id: r.id,
+    memberCount: Object.keys(r.members).length,
+    maxUsers: r.maxUsers,
+    ttl: r.expiresAt ? Math.max(0, r.expiresAt - now) : null
   }));
   res.json(list);
 });
 
-/* szoba létrehozása */
+/* POST create room */
 app.post("/api/rooms", (req, res) => {
   const { username, password, hidden = false, maxUsers } = req.body;
   if (!username) return res.status(400).json({ error: "username required" });
@@ -62,20 +55,22 @@ app.post("/api/rooms", (req, res) => {
 
   const roomId = genRoomId();
   const userId = uuid();
+  const hashU  = sha256(username.trim().toLowerCase());
 
   rooms[roomId] = {
     id       : roomId,
     isPublic : !hidden,
     maxUsers : cap,
     hash     : sha256(password.trim().toLowerCase()),
-    members  : { [userId]: username }
+    members  : { [userId]: username },
+    loginHashes: [hashU]
   };
 
   res.status(201).json({ roomId, userId });
   if (!hidden) broadcastRooms();
 });
 
-/* csatlakozás szobához */
+/* POST join room */
 app.post("/api/rooms/:roomId/join", (req, res) => {
   const room = rooms[req.params.roomId];
   if (!room) return res.status(404).json({ error: "room not found" });
@@ -85,8 +80,14 @@ app.post("/api/rooms/:roomId/join", (req, res) => {
   if (typeof password !== "string" || password.trim().length < 5)
     return res.status(400).json({ error: "password min 5 chars" });
 
-  if (Object.keys(room.members).length >= room.maxUsers)
-    return res.status(403).json({ error: "room full" });
+  const uhash = sha256(username.trim().toLowerCase());
+
+  // ha már bent van ilyen név → engedjük
+  if (!room.loginHashes.includes(uhash)) {
+    if (room.loginHashes.length >= room.maxUsers)
+      return res.status(403).json({ error: "maximum number of users already joined" });
+    room.loginHashes.push(uhash);
+  }
 
   if (Object.values(room.members).includes(username))
     return res.status(409).json({ error: "username already taken" });
@@ -102,9 +103,9 @@ app.post("/api/rooms/:roomId/join", (req, res) => {
   broadcastUsers(room.id);
 });
 
-/* ─── WebSocket ─── */
+/* WebSocket kapcsolat */
 const server = http.createServer(app);
-const wss    = new WebSocketServer({ server });
+const wss = new WebSocketServer({ server });
 
 interface ClientData { roomId: string; userId: string; }
 
@@ -130,7 +131,7 @@ wss.on("connection", ws => {
   });
 });
 
-/* üzenet kezelése */
+/* Beérkező üzenet */
 function handleMsg(this:any, raw:Buffer){
   const cd:ClientData = this._data; if(!cd) return;
   const room = rooms[cd.roomId];
@@ -150,10 +151,10 @@ function handleMsg(this:any, raw:Buffer){
   } catch {}
 }
 
-/* kliens bontás */
+/* Kilépés */
 function handleClose(ws:any){
   const cd:ClientData = ws._data; if(!cd) return;
-  const room=rooms[cd.roomId];     if(!room) return;
+  const room = rooms[cd.roomId]; if(!room) return;
 
   delete room.members[cd.userId];
   broadcastUsers(room.id);
@@ -162,7 +163,7 @@ function handleClose(ws:any){
     room.expiresAt = Date.now() + ROOM_TTL;
 }
 
-/* ─── broadcast segédek ─── */
+/* Broadcast */
 function broadcast(roomId:string,p:any){
   const txt = JSON.stringify(p);
   wss.clients.forEach((c:any)=>{
@@ -185,7 +186,7 @@ function broadcastRooms(){
   wss.clients.forEach(c=>c.readyState===1&&c.send(txt));
 }
 
-/* ─── GC ─── */
+/* GC időzítők */
 setInterval(()=>{
   const now=Date.now();
   for(const [id,r] of Object.entries(rooms)){
@@ -202,5 +203,4 @@ setInterval(()=>{
     if(messages[i].sentAt<cutoff) messages.splice(i,1);
 },60_000);
 
-/* ─── start ─── */
 server.listen(PORT,()=>console.log(`🚀 listening on :${PORT}`));
