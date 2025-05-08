@@ -13,38 +13,53 @@ h1{text-align:center}
 .card{border:1px solid #ccc;border-radius:var(--rad);padding:var(--gap);
       display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--gap);}
 #roomList .card:hover{background:#f6f6f6;cursor:pointer}
-.btn{padding:.4rem .9rem;margin:.15rem;border:1px solid #888;border-radius:var(--rad);
-     background:#fafafa;cursor:pointer}
+.btn{padding:.4rem .9rem;margin:.15rem;border:1px solid #888;border-radius:var(--rad);background:#fafafa;cursor:pointer}
+.hidden{display:none}
 
 /* lekerekített „négyzetes” Room-ID mező */
 .id-input{
   font-family:monospace;
+  font-size:1.4rem;
   text-transform:uppercase;
-  border:1px solid #888;border-radius:var(--rad);
-  padding:.4rem .5rem;
-  letter-spacing:.2ch;
+  border:none; outline:none;
+  caret-color:#000;
+  width:12.5ch;               /* 11 látható karakter + pici belső margó */
+  padding:.45rem .4ch;
+  letter-spacing:.55ch;       /* tér a kockák között */
+  /* vízszintes felső + alsó vonal */
   background:
+    linear-gradient(#888 0 0) top    /100% 2px no-repeat,
+    linear-gradient(#888 0 0) bottom /100% 2px no-repeat,
+  /* ismétlődő függőleges választóvonalak (kockák) */
     repeating-linear-gradient(90deg,
-        transparent 0   2.2ch,           /* belső tér */
-        #ddd        2.2ch 2.3ch,         /* jobb keret */
-        transparent 2.3ch 2.4ch,         /* rés szóközhöz */
-        transparent 2.4ch 4.6ch,         /* következő belső tér */
-        #ddd        4.6ch 4.7ch,
-        transparent 4.7ch 4.8ch,
-        transparent 4.8ch 7ch);          /* stb. */
-  width:12ch;           /* pontosan 11 karakter + pici tér */
+      transparent 0 calc(1ch + .55ch - 2px),
+      #888        calc(1ch + .55ch - 2px) calc(1ch + .55ch),
+      transparent calc(1ch + .55ch) calc(1ch + 2*.55ch));
+  border-radius:var(--rad);
 }
-.id-input:focus{outline:2px solid #4b9;}
-.hidden{display:none}
+.id-input::-webkit-input-placeholder{color:#aaa}      /* Safari fix */
+.id-input::selection{background:#c8dcff}              /* szebb kijelölés */
 
-#messages{height:50vh;border:1px solid #ddd;border-radius:var(--rad);padding:var(--gap);
-          overflow-y:auto;margin-bottom:var(--gap);}
-#side{font-size:.9rem;border:1px solid #ddd;border-radius:var(--rad);padding:var(--gap);
-      height:50vh;overflow-y:auto}
-
+#messages{height:50vh;border:1px solid #ddd;border-radius:var(--rad);padding:var(--gap);overflow-y:auto;margin-bottom:var(--gap);}
+#side{font-size:.9rem;border:1px solid #ddd;border-radius:var(--rad);padding:var(--gap);height:50vh;overflow-y:auto}
 @keyframes fade {from{opacity:1;} to{opacity:0;}}
 .msg{animation:fade 300s linear forwards;} /* 5 perc */
 </style>
+<script>
+/* ───────────────── Room-ID élő formázás ───────────────── */
+(function(){
+  const el=document.getElementById('jRoom');
+  el.addEventListener('input',()=>{
+    const raw = el.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,9);
+    let out='';
+    for(let i=0;i<raw.length;i++){
+      out+=raw[i];
+      if((i===2||i===5)&& i!==raw.length-1) out+='-';
+    }
+    el.value=out;
+  });
+})();
+</script>
 </head>
 <body>
 <h1>Simple Chat</h1>
